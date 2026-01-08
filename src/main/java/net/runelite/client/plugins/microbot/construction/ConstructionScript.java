@@ -4,7 +4,6 @@ import net.runelite.api.GameObject;
 import net.runelite.api.NPC;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.widgets.Widget;
-import net.runelite.client.plugins.microbot.construction.ConstructionConfig;
 import net.runelite.client.plugins.microbot.construction.enums.ConstructionState;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.Script;
