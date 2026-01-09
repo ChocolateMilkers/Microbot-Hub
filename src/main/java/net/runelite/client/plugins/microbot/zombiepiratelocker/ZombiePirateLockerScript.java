@@ -11,6 +11,7 @@ import net.runelite.client.plugins.microbot.util.gameobject.Rs2GameObject;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2Inventory;
 import net.runelite.client.plugins.microbot.util.Rs2InventorySetup;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2ItemModel;
+import net.runelite.client.plugins.microbot.util.math.Rs2Random;
 import net.runelite.client.plugins.microbot.util.player.Rs2Player;
 import net.runelite.client.plugins.microbot.util.player.Rs2Pvp;
 import net.runelite.client.plugins.microbot.util.security.Login;
@@ -23,7 +24,8 @@ public class ZombiePirateLockerScript extends Script {
 
     // ==== CONSTANTS ====
     private static final int ZOMBIE_KEY = 29449;
-    private static final int[] GLORY_IDS = {1706,1708,1710,1712,11976,11978};
+    private static final int[] GLORY_IDS = {1706,1708,1710,1712,11976,11978}; // Charged glories
+    private static final int UNCHARGED_GLORY = 1704; // Uncharged Amulet of glory
     private static final int LUMBERYARD_TELE = 12642;
 
     private static final int CHEST_CLOSED = 53222;
@@ -44,6 +46,8 @@ public class ZombiePirateLockerScript extends Script {
     private static final long BANK_COOLDOWN = 5000; // 5 seconds between banking attempts
     private long lastEmergencyTeleport = 0;
     private static final long EMERGENCY_TELEPORT_COOLDOWN = 10_000; // 10 seconds
+    private boolean escapedFromPker = false; // Flag to track PKer-triggered emergency teleports
+    private boolean depositLootingBag = false;
 
     private Rs2InventorySetup inventorySetup;
 
@@ -94,15 +98,20 @@ public class ZombiePirateLockerScript extends Script {
                     log.debug("Out of zombie keys, proceeding to bank");
                 }
 
-                // 4. Banking - only bank if we're out of keys
+                // 4. Banking - bank if we're out of keys OR if we escaped from a PKer
                 // (inventory setup will be checked and loaded inside handleBanking)
-                if (!Rs2Inventory.hasItem(ZOMBIE_KEY) && Rs2Bank.isNearBank(15)) {
-                    // Prevent banking loop by checking cooldown
-                    if (System.currentTimeMillis() - lastBankTime < BANK_COOLDOWN) {
+                if ((!Rs2Inventory.hasItem(ZOMBIE_KEY) || escapedFromPker) && Rs2Bank.isNearBank(15)) {
+                    // Skip cooldown check if we escaped from PKer
+                    if (!escapedFromPker && System.currentTimeMillis() - lastBankTime < BANK_COOLDOWN) {
                         log.debug("Banking on cooldown, waiting {} ms",
                             BANK_COOLDOWN - (System.currentTimeMillis() - lastBankTime));
                         return;
                     }
+
+                    if (escapedFromPker) {
+                        log.info("Escaped from PKer - forcing rebank and world hop");
+                    }
+
                     log.debug("Near bank, handling banking operations");
                     handleBanking();
                     return;
@@ -149,6 +158,7 @@ public class ZombiePirateLockerScript extends Script {
 
     private void handlePkerDetected() {
         log.info("Handling PKer detection - executing emergency teleport");
+        escapedFromPker = true; // Set flag for PKer escape
         emergencyTeleport();
     }
 
@@ -168,6 +178,7 @@ public class ZombiePirateLockerScript extends Script {
                     if (Rs2Player.getWorldLocation().getY() < 3520) {
                         log.info("Successfully teleported to safety");
                         lastEmergencyTeleport = System.currentTimeMillis();
+                        depositLootingBag = true;
                     } else {
                         log.warn("Teleport may have failed - still in wilderness");
                     }
@@ -178,6 +189,7 @@ public class ZombiePirateLockerScript extends Script {
             }
         }
         log.error("No Amulet of Glory found in inventory! Shutting down script");
+        //TODO FIX THIS
         shutdown();
     }
 
@@ -198,64 +210,109 @@ public class ZombiePirateLockerScript extends Script {
 
         // Deposit looting bag first (uses built-in method)
         log.debug("Depositing looting bag");
-        Rs2Bank.depositLootingBag();
-        sleep(600);
+        if (depositLootingBag) {
+            Rs2Bank.depositLootingBag();
+            sleep(Rs2Random.between(350, 800));
+            depositLootingBag = false;
+        }
 
-        // Check if inventory/equipment matches setup
-        if (!inventorySetup.doesInventoryMatch() || !inventorySetup.doesEquipmentMatch()) {
+        // Check if inventory/equipment matches setup (with glory exception)
+        if (!doesInventoryMatchWithGloryException() || !inventorySetup.doesEquipmentMatch()) {
             log.info("Inventory/equipment mismatch detected, loading setup");
             log.info("Loading inventory and equipment from setup");
 
+            // Handle glory management BEFORE loading inventory setup
+            handleGloryManagement();
+
+            // ===== EQUIPMENT =====
             var items = inventorySetup.getEquipmentItems();
-            var inventory = inventorySetup.getInventoryItems();
             for (var item : items) {
                 if (item != null && item.getId() != -1) {
                     Rs2Bank.wearItem(item.getName(), true);
                 }
             }
 
-            for (var item : inventory) {
-                if (item != null && item.getId() != -1) {
-                    int required = item.getQuantity();
-                    int current = Rs2Inventory.count(item.getName());
-                    int missing = required - current;
+            inventorySetup.loadInventory();
 
-                    if (missing <= 0)
-                        continue;
-
-                    Rs2Bank.withdrawX(item.getName(), missing, true);
-                    sleepUntil(() -> Rs2Inventory.count(item.getName()) >= required, 3500);
-                }
-            }
-
-            // Wait for inventory setup to complete
-            log.debug("Waiting for inventory setup to complete");
-            boolean setupComplete = sleepUntil(() ->
-                inventorySetup.doesInventoryMatch() && inventorySetup.doesEquipmentMatch(), 2000);
-
-            if (!setupComplete) {
-                log.error("Failed to load inventory setup after 10 seconds");
-                // Check what's missing
-                if (!Rs2Inventory.hasItem(ZOMBIE_KEY)) {
-                    log.error("Missing zombie pirate keys in bank!");
-                }
-                if (!Rs2Inventory.hasItem(LUMBERYARD_TELE)) {
-                    log.error("Missing lumberyard teleport in bank!");
-                }
-                // Still try to continue - maybe some items are optional
-            } else {
-                log.info("Inventory setup loaded successfully");
-            }
+            // Return and let loadInventory() handle validation internally
+            // Next loop iteration will check if setup is complete
+            log.debug("Loading inventory, returning to let it complete");
             return;
         }
 
-        log.debug("Inventory setup matches, closing bank and teleporting");
+        log.debug("Inventory setup matches, closing bank");
         Rs2Bank.closeBank();
-        sleepUntil(() -> !Rs2Bank.isOpen(), 3000); // Wait for bank to close
+        sleepUntil(() -> !Rs2Bank.isOpen(), Rs2Random.between(1600, 2200)); // Wait for bank to close
 
         // Set bank cooldown AFTER closing bank to prevent immediate re-banking
         lastBankTime = System.currentTimeMillis();
         log.debug("Bank cooldown set, preventing re-banking for {} seconds", BANK_COOLDOWN / 1000);
+
+        // If we escaped from a PKer, hop worlds immediately at the bank
+        if (escapedFromPker) {
+            log.info("PKer escape: Hopping worlds at bank before returning to wilderness");
+            int maxRetries = 3;
+            boolean hopSuccessful = false;
+            int initialWorld = Microbot.getClient().getWorld();
+
+            for (int attempt = 1; attempt <= maxRetries && !hopSuccessful; attempt++) {
+                int currentWorld = Microbot.getClient().getWorld();
+                if (currentWorld != initialWorld && attempt > 1) {
+                    log.info("Previous hop attempt succeeded - now on world {}", currentWorld);
+                    lastHopTime = System.currentTimeMillis();
+                    hopSuccessful = true;
+                    break;
+                }
+
+                int newWorld = Login.getRandomWorld(true, null);
+                log.info("PKer escape hop: Hopping from world {} to {} (attempt {}/{})",
+                    currentWorld, newWorld, attempt, maxRetries);
+
+                boolean isHopped = Microbot.hopToWorld(newWorld);
+                sleep(1000);
+
+                if (isHopped) {
+                    log.debug("World hop initiated");
+                } else {
+                    log.debug("Microbot.hopToWorld returned false, waiting for potential async hop");
+                }
+
+                // Wait for hopping state
+                boolean hoppingStarted = sleepUntil(() ->
+                    Microbot.getClient().getGameState() == GameState.HOPPING, 5000);
+
+                if (hoppingStarted) {
+                    // Wait for logged in state
+                    boolean loggedIn = sleepUntil(() ->
+                        Microbot.getClient().getGameState() == GameState.LOGGED_IN, 10000);
+
+                    if (loggedIn) {
+                        log.info("PKer escape hop successful - now on world {}", Microbot.getClient().getWorld());
+                        lastHopTime = System.currentTimeMillis();
+                        hopSuccessful = true;
+                    } else {
+                        log.warn("World hop timed out waiting for LOGGED_IN state (attempt {}/{})",
+                            attempt, maxRetries);
+                    }
+                } else {
+                    log.warn("World hop timed out waiting for HOPPING state (attempt {}/{})",
+                        attempt, maxRetries);
+                }
+
+                if (!hopSuccessful && attempt < maxRetries) {
+                    log.info("Waiting 3 seconds before retry...");
+                    sleep(3000);
+                }
+            }
+
+            if (!hopSuccessful) {
+                log.error("Failed to hop worlds after {} attempts, continuing anyway", maxRetries);
+            }
+
+            // Clear the PKer escape flag now that we've handled it
+            escapedFromPker = false;
+            log.info("PKer escape protocol complete, resuming normal operations");
+        }
 
         // Use the teleport tab with a more direct interaction
         Rs2ItemModel lumberyardTab = Rs2Inventory.get(LUMBERYARD_TELE);
@@ -353,6 +410,93 @@ public class ZombiePirateLockerScript extends Script {
         }
     }
 
+    /**
+     * Custom inventory check that accepts any charged glory instead of requiring exact ID match
+     */
+    private boolean doesInventoryMatchWithGloryException() {
+        var setupItems = inventorySetup.getInventoryItems();
+
+        for (var setupItem : setupItems) {
+            if (setupItem == null || setupItem.getId() == -1) continue;
+
+            // Check if this setup item is a glory
+            boolean isGloryInSetup = false;
+            for (int gloryId : GLORY_IDS) {
+                if (setupItem.getId() == gloryId) {
+                    isGloryInSetup = true;
+                    break;
+                }
+            }
+
+            if (isGloryInSetup) {
+                // For glories, check if we have ANY charged glory (not specific ID)
+                boolean hasAnyChargedGlory = false;
+                for (int gloryId : GLORY_IDS) {
+                    if (Rs2Inventory.hasItem(gloryId)) {
+                        hasAnyChargedGlory = true;
+                        break;
+                    }
+                }
+                if (!hasAnyChargedGlory) {
+                    return false; // Missing glory entirely
+                }
+                continue; // Glory OK, check next item
+            }
+
+            // For non-glory items, check exact quantity
+            int required = setupItem.getQuantity();
+            int current = Rs2Inventory.items()
+                .filter(i -> i != null && i.getId() == setupItem.getId())
+                .mapToInt(Rs2ItemModel::getQuantity)
+                .sum();
+
+            if (current < required) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private void handleGloryManagement() {
+        // Check if we have an uncharged glory in inventory
+        if (Rs2Inventory.hasItem(UNCHARGED_GLORY)) {
+            log.info("Found uncharged glory (ID: {}), depositing and withdrawing charged glory", UNCHARGED_GLORY);
+            Rs2Bank.depositOne(UNCHARGED_GLORY);
+            sleep(300, 500);
+
+            // Withdraw a charged glory
+            for (int gloryId : GLORY_IDS) {
+                if (Rs2Bank.hasItem(gloryId)) {
+                    log.info("Withdrawing charged glory (ID: {})", gloryId);
+                    Rs2Bank.withdrawOne(gloryId);
+                    sleepUntil(() -> Rs2Inventory.hasItem(gloryId), Rs2Random.between(800, 1600));
+                    return;
+                }
+            }
+            log.warn("No charged glories found in bank!");
+            return;
+        }
+
+        // Check if we already have a charged glory - if so, skip withdrawing another
+        boolean hasChargedGlory = false;
+        for (int gloryId : GLORY_IDS) {
+            if (Rs2Inventory.hasItem(gloryId)) {
+                log.debug("Already have charged glory (ID: {}), skipping withdrawal", gloryId);
+                hasChargedGlory = true;
+                break;
+            }
+        }
+
+        if (hasChargedGlory) {
+            // We have a charged glory, don't need to do anything
+            return;
+        }
+
+        // No glory in inventory, will be handled by the normal inventory setup loop
+        log.debug("No glory in inventory, will be withdrawn by inventory setup");
+    }
+
     private void openChest() {
         var chest = Rs2GameObject.findObjectById(CHEST_CLOSED);
         if (chest == null) {
@@ -367,7 +511,7 @@ public class ZombiePirateLockerScript extends Script {
             log.debug("Waiting for chest opening message...");
 
             // Wait for chat message confirmation
-            boolean messageReceived = sleepUntil(() -> chestOpened, 3000);
+            boolean messageReceived = sleepUntil(() -> chestOpened, Rs2Random.between(2800, 3100));
 
             if (messageReceived) {
                 log.debug("Chest opening message received, interacting with locker again");

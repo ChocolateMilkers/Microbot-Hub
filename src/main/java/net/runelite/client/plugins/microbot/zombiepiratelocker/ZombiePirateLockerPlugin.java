@@ -24,7 +24,7 @@ import java.awt.*;
 )
 public class ZombiePirateLockerPlugin extends Plugin {
 
-    static final String version = "1.0.1";
+    static final String version = "1.0.5";
 
     @Inject
     private ZombiePirateLockerConfig config;
