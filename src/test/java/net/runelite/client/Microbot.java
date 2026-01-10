@@ -8,13 +8,15 @@ import net.runelite.client.plugins.fishing.FishingPlugin;
 import net.runelite.client.plugins.microbot.aiofighter.AIOFighterPlugin;
 import net.runelite.client.plugins.microbot.astralrc.AstralRunesPlugin;
 import net.runelite.client.plugins.microbot.autofishing.AutoFishingPlugin;
-import net.runelite.client.plugins.microbot.example.ExamplePlugin;
+import net.runelite.client.plugins.microbot.construction.ConstructionPlugin;
+import net.runelite.client.plugins.microbot.zombiepiratelocker.ZombiePirateLockerPlugin;
+import net.runelite.client.plugins.microbot.con.ConPlugin;
 
 public class Microbot
 {
 
 	private static final Class<?>[] debugPlugins = {
-		AIOFighterPlugin.class
+		AIOFighterPlugin.class, ConstructionPlugin.class, ZombiePirateLockerPlugin.class, ConPlugin.class
 	};
 
     public static void main(String[] args) throws Exception
