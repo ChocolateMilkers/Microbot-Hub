@@ -36,13 +36,6 @@ public class ZombiePirateLockerOverlay extends OverlayPanel {
                 .build());
 
         panelComponent.getChildren().add(LineComponent.builder()
-                .left("Keys/hr:")
-                .right(String.format("%.2f",
-                        ZombiePirateLockerScript.getPerHour(
-                                ZombiePirateLockerScript.keysUsed)))
-                .build());
-
-        panelComponent.getChildren().add(LineComponent.builder()
                 .left("Status:")
                 .right(Microbot.status)
                 .build());

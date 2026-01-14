@@ -28,4 +28,33 @@ public interface ZombiePirateLockerConfig extends Config {
                 "To use that plugin, click the armor guy on the side-bar, click the eye under the default box, " +
                 "and click the refresh icon to set your current inventory as the default inventory.";
     }
+
+    @ConfigSection(
+            name = "Discord Notifications",
+            description = "Discord webhook settings for PKer alerts",
+            position = 1
+    )
+    String discordSection = "discord";
+
+    @ConfigItem(
+            keyName = "discordWebhook",
+            name = "Discord Webhook URL",
+            description = "Discord webhook URL to send PKer notifications (leave empty to disable)",
+            position = 0,
+            section = discordSection
+    )
+    default String discordWebhook() {
+        return "";
+    }
+
+    @ConfigItem(
+            keyName = "enableDiscordNotifications",
+            name = "Enable Discord Notifications",
+            description = "Send Discord notifications when PKers are detected",
+            position = 1,
+            section = discordSection
+    )
+    default boolean enableDiscordNotifications() {
+        return false;
+    }
 }
