@@ -3,6 +3,7 @@ package net.runelite.client.plugins.microbot.zombiepiratelocker;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.GameState;
+import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.Script;
 import net.runelite.client.plugins.microbot.util.bank.Rs2Bank;
@@ -13,18 +14,17 @@ import net.runelite.client.plugins.microbot.util.Rs2InventorySetup;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2ItemModel;
 import net.runelite.client.plugins.microbot.util.math.Rs2Random;
 import net.runelite.client.plugins.microbot.util.player.Rs2Player;
-import net.runelite.client.plugins.microbot.util.player.Rs2PlayerModel;
 import net.runelite.client.plugins.microbot.util.player.Rs2Pvp;
 import net.runelite.client.plugins.microbot.util.security.Login;
 import net.runelite.client.plugins.microbot.util.walker.Rs2Walker;
+<<<<<<< Updated upstream
+=======
+import net.runelite.client.plugins.microbot.util.Global;
+>>>>>>> Stashed changes
 
-import java.io.OutputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.nio.charset.StandardCharsets;
-import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 
 @Slf4j
 public class ZombiePirateLockerScript extends Script {
@@ -41,6 +41,19 @@ public class ZombiePirateLockerScript extends Script {
     private static final Rs2WorldArea CHEST_AREA =
             new Rs2WorldArea(new WorldPoint(3368, 3624, 0), 6, 3);
 
+<<<<<<< Updated upstream
+=======
+    // Transport destination points
+    private static final WorldPoint CHAOS_TEMPLE_AREA = new WorldPoint(3236, 3639, 0); // Near Chaos Temple after burning amulet
+    private static final WorldPoint AGILITY_SHORTCUT_WEST = new WorldPoint(3267, 3628, 0); // West side of 72 agility shortcut
+    private static final WorldPoint OBELISK_LVL18_AREA = new WorldPoint(3227, 3667, 0); // Level 18 obelisk area
+    private static final WorldPoint FEROX_ENCLAVE_EXIT = new WorldPoint(3155, 3635, 0); // Ferox Enclave east exit
+    private static final WorldPoint EARTH_ALTAR_AREA = new WorldPoint(3304, 3476, 0); // Earth Altar area (Ring of Elements)
+    private static final WorldPoint VARROCK_BALLOON_AREA = new WorldPoint(3296, 3480, 0); // Varrock balloon landing
+
+    // Ring of Dueling teleport to Ferox Enclave arrives at ~(3150, 3635), bank is at ~(3132, 3629) - about 18 tiles
+
+>>>>>>> Stashed changes
     // ==== STATS ====
     public static int keysUsed = 0;
     public static long startTime;
@@ -48,6 +61,7 @@ public class ZombiePirateLockerScript extends Script {
 
     // ==== INTERNAL ====
     private long lastHopTime = 0;
+<<<<<<< Updated upstream
     private static final long HOP_COOLDOWN = 30_000; // 30 seconds
     private long lastBankTime = 0;
     private static final long BANK_COOLDOWN = 5000; // 5 seconds between banking attempts
@@ -58,6 +72,14 @@ public class ZombiePirateLockerScript extends Script {
     private boolean attackDetected = false; // Flag to prevent log spam
     private long lastDiscordWebhookSent = 0;
     private static final long DISCORD_WEBHOOK_COOLDOWN = 30_000; // 60 seconds between webhook messages
+=======
+    private static final long HOP_COOLDOWN = 10_000; // 10 seconds
+    private long lastBankTime = 0;
+    private static final long BANK_COOLDOWN = 5000; // 5 seconds between banking attempts
+    private static final long CHEST_INTERACTION_COOLDOWN = 2000; // 2 seconds between chest click attempts
+    // PKer escape flag - can be set by PlayerMonitor plugin to trigger world hop after escape
+    public boolean escapedFromPker = false;
+>>>>>>> Stashed changes
 
     private Rs2InventorySetup inventorySetup;
     private ZombiePirateLockerConfig config;
@@ -72,6 +94,29 @@ public class ZombiePirateLockerScript extends Script {
                 if (!Microbot.isLoggedIn()) return;
                 if (!super.run()) return;
 
+                if (config.enablePlayerMonitor()) {
+                    try {
+                        Plugin playerMonitor = Microbot.getPluginManager().getPlugins().stream()
+                                .filter(x -> x.getClass().getName().equals("net.runelite.client.plugins.microbot.playermonitor.PlayerMonitorPlugin"))
+                                .findFirst()
+                                .orElse(null);
+                        if (playerMonitor != null) {
+                            Microbot.startPlugin(playerMonitor);
+                            Microbot.log("[Zombie Locker] Player Monitor enabled for banking safety");
+                        } else {
+                            Microbot.log("[Zombie Locker] Player Monitor plugin not found - you are at risk!");
+                        }
+                    } catch (Exception e) {
+                        Microbot.log("[Zombie Locker] Failed to start Player Monitor: " + e.getMessage());
+                    }
+                }
+
+                // Debug: Log loop start with key count
+                int keyCount = Rs2Inventory.count(ZOMBIE_KEY);
+                boolean hasKeyByHasItem = Rs2Inventory.hasItem(ZOMBIE_KEY);
+                log.debug("Loop tick - Keys: {} (count), hasItem={}, Location: {}",
+                    keyCount, hasKeyByHasItem, Rs2Player.getWorldLocation());
+
                 // Initialize inventory setup on first run (on client thread context)
                 if (inventorySetup == null) {
                     try {
@@ -83,18 +128,8 @@ public class ZombiePirateLockerScript extends Script {
                     }
                 }
 
-                // 1. PKER DETECTION (HIGHEST PRIORITY)
-                List<Rs2PlayerModel> threats = detectPker();
-                if (!threats.isEmpty()) {
-                    // Cancel any active walking immediately
-                    try {
-                        Rs2Walker.setTarget(null);
-                    } catch (Exception e) {
-                        // Silently ignore - walker may not be active
-                    }
-                    handlePkerDetected(threats);
-                    return;
-                }
+                // 1. PKer detection is handled by PlayerMonitor plugin (runs on separate thread)
+                // PlayerMonitor will automatically interrupt walking and trigger emergency actions
 
                 // 2. Eat if low HP
                 if (Rs2Player.getHealthPercentage() < 80) {
@@ -103,21 +138,47 @@ public class ZombiePirateLockerScript extends Script {
                     return;
                 }
 
+<<<<<<< Updated upstream
                 // 3. No keys → teleport to safety if in wilderness
                 if (!Rs2Inventory.hasItem(ZOMBIE_KEY)) {
                     // Check if we're still in wilderness
                     if (Rs2Player.getWorldLocation().getY() >= 3520) {
                         // Still in wilderness, need emergency teleport
+=======
+                // 3. No keys → teleport to safety if in wilderness (but not if in safe zone like Ferox)
+                // Use count() instead of hasItem() - hasItem may return stale/cached data
+                if (Rs2Inventory.count(ZOMBIE_KEY) == 0) {
+                    WorldPoint playerLoc = Rs2Player.getWorldLocation();
+                    int playerY = playerLoc.getY();
+                    boolean inWildernessRange = playerY >= 3520;
+
+                    // Log immediately BEFORE checking safe zone
+                    log.info("OUT OF KEYS! Location: {}, inWildernessRange={}", playerLoc, inWildernessRange);
+
+                    boolean inSafeZone = isInWildernessSafeZone();
+                    log.info("Safe zone check complete: inSafeZone={}", inSafeZone);
+
+                    // Check if we're still in wilderness AND not in a safe zone
+                    if (inWildernessRange && !inSafeZone) {
+                        // Still in PvP wilderness, need to teleport out (not emergency - no PKer)
+>>>>>>> Stashed changes
                         log.warn("Out of zombie keys in wilderness, teleporting to safety");
                         emergencyTeleport();
                         return;
                     }
+<<<<<<< Updated upstream
                     // If we're safe, fall through to banking logic below
                     log.debug("Out of zombie keys, proceeding to bank");
+=======
+                    // If we're safe (below wilderness OR in safe zone), fall through to banking logic
+                    log.info("Out of zombie keys, proceeding to bank (in safe area: Y={}, safeZone={})",
+                        playerY, inSafeZone);
+>>>>>>> Stashed changes
                 }
 
                 // 4. Banking - bank if we're out of keys OR if we escaped from a PKer
                 // (inventory setup will be checked and loaded inside handleBanking)
+<<<<<<< Updated upstream
                 if ((!Rs2Inventory.hasItem(ZOMBIE_KEY) || escapedFromPker) && Rs2Bank.isNearBank(15)) {
                     // Skip cooldown check if we escaped from PKer
                     if (!escapedFromPker && System.currentTimeMillis() - lastBankTime < BANK_COOLDOWN) {
@@ -132,17 +193,72 @@ public class ZombiePirateLockerScript extends Script {
 
                     log.debug("Near bank, handling banking operations");
                     handleBanking();
+=======
+                // Use count() instead of hasItem() for reliability
+                boolean needsBank = Rs2Inventory.count(ZOMBIE_KEY) == 0 || escapedFromPker;
+                if (needsBank) {
+                    // Determine target bank based on teleport method
+                    BankLocation targetBank = config.teleportMethod() == ZombiePirateLockerConfig.TeleportMethod.GLORY_EDGEVILLE
+                        ? BankLocation.EDGEVILLE
+                        : BankLocation.FEROX_ENCLAVE;
+
+                    // Check if we're in the general bank area (30 tiles)
+                    if (Rs2Bank.isNearBank(30)) {
+                        // We're in the area - but are we close enough to interact?
+                        if (Rs2Bank.isNearBank(10)) {
+                            // Close enough to interact
+                            if (!escapedFromPker && System.currentTimeMillis() - lastBankTime < BANK_COOLDOWN) {
+                                log.debug("Banking on cooldown, waiting {} ms",
+                                    BANK_COOLDOWN - (System.currentTimeMillis() - lastBankTime));
+                                return;
+                            }
+
+                            if (escapedFromPker) {
+                                log.info("Escaped from PKer - forcing rebank and world hop");
+                            }
+
+                            log.debug("Close to bank (within 10 tiles), handling banking operations");
+                            handleBanking();
+                            return;
+                        } else {
+                            // In bank area but too far to interact - walk closer
+                            log.debug("In bank area but too far to interact, walking to {} bank", targetBank);
+                            Rs2Bank.walkToBank(targetBank);
+                            return;
+                        }
+                    }
+
+                    // Not near any bank - check if in safe zone or wilderness
+                    boolean inWilderness = Rs2Pvp.isInWilderness();
+                    boolean inSafeZone = isInWildernessSafeZone();
+
+                    if (inWilderness && !inSafeZone) {
+                        // Still in PvP wilderness, MUST teleport before we can bank
+                        log.warn("Still in wilderness without keys, attempting teleport to safety");
+                        teleportToSafety();
+                        return;
+                    }
+
+                    // In safe zone or outside wilderness - walk to target bank
+                    log.info("Walking to {} bank from safe area", targetBank);
+                    Rs2Bank.walkToBank(targetBank);
+>>>>>>> Stashed changes
                     return;
                 }
 
                 // 5. Walk to chest area
                 if (!CHEST_AREA.contains(Rs2Player.getWorldLocation())) {
-                    log.debug("Walking to chest area");
-                    int totalTiles = CHEST_AREA.toWorldPointList().size();
-                    WorldPoint randomTile = CHEST_AREA.toWorldPointList().get(
-                        net.runelite.client.plugins.microbot.util.math.Rs2Random.between(0, totalTiles - 1)
-                    );
-                    Rs2Walker.walkTo(randomTile, 0);
+                    // Only initiate walk if not already moving (prevents spam)
+                    if (!Rs2Player.isMoving()) {
+                        int totalTiles = CHEST_AREA.toWorldPointList().size();
+                        WorldPoint randomTile = CHEST_AREA.toWorldPointList().get(
+                            net.runelite.client.plugins.microbot.util.math.Rs2Random.between(0, totalTiles - 1)
+                        );
+                        log.debug("Walking to chest area: {}", randomTile);
+                        // Use distance tolerance of 3 - walker will return when within 3 tiles
+                        // This allows more frequent PKer checks between path segments
+                        Rs2Walker.walkTo(randomTile, 3);
+                    }
                     return;
                 }
 
@@ -160,6 +276,7 @@ public class ZombiePirateLockerScript extends Script {
 
     // ================= HELPERS =================
 
+<<<<<<< Updated upstream
     private List<Rs2PlayerModel> detectPker() {
         try {
             if (!Rs2Pvp.isInWilderness()) {
@@ -225,27 +342,84 @@ public class ZombiePirateLockerScript extends Script {
         escapedFromPker = true; // Set flag for PKer escape
         emergencyTeleport();
     }
+=======
+    // Ferox Enclave safe zone boundaries (approximate)
+    private static final int FEROX_MIN_X = 3125;
+    private static final int FEROX_MAX_X = 3155;
+    private static final int FEROX_MIN_Y = 3618;
+    private static final int FEROX_MAX_Y = 3642;
 
-    private void sendDiscordWebhook(List<Rs2PlayerModel> threats) {
+    /**
+     * Checks if the player is in a wilderness safe zone (like Ferox Enclave).
+     * Uses coordinate-based detection for reliability - widget lookups can block/fail.
+     *
+     * @return true if in Ferox Enclave or below wilderness line, false otherwise
+     */
+    private boolean isInWildernessSafeZone() {
         try {
-            String webhookUrl = config.discordWebhook();
-            int currentWorld = Microbot.getClient().getWorld();
-            String accountName = Microbot.getClient().getLocalPlayer() != null ?
-                Microbot.getClient().getLocalPlayer().getName() : "Unknown";
+            WorldPoint loc = Rs2Player.getWorldLocation();
+            int x = loc.getX();
+            int y = loc.getY();
 
-            // Build the message content
-            StringBuilder description = new StringBuilder();
-            description.append("**Account:** ").append(accountName).append("\n");
-            description.append("**World:** ").append(currentWorld).append("\n\n");
-            description.append("**PKers Detected:**\n");
-
-            for (Rs2PlayerModel threat : threats) {
-                var player = threat.getPlayer();
-                int combatLevel = player.getCombatLevel();
-                String playerName = player.getName() != null ? player.getName() : "Unknown";
-                description.append("• ").append(playerName)
-                    .append(" (Level ").append(combatLevel).append(")\n");
+            // Below wilderness line = safe
+            if (y < 3520) {
+                log.debug("Below wilderness (Y={}) - safe", y);
+                return true;
             }
+
+            // Check if in Ferox Enclave bounds
+            boolean inFerox = x >= FEROX_MIN_X && x <= FEROX_MAX_X &&
+                              y >= FEROX_MIN_Y && y <= FEROX_MAX_Y;
+
+            if (inFerox) {
+                log.debug("In Ferox Enclave area (X={}, Y={}) - safe", x, y);
+                return true;
+            }
+
+            // In wilderness range but not in known safe zone
+            log.debug("In wilderness (X={}, Y={}) - NOT safe", x, y);
+            return false;
+        } catch (Exception e) {
+            log.warn("Error checking safe zone: {} - assuming NOT safe", e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Checks if the player has a valid teleport item based on config.
+     * Uses item IDs for reliable detection across all charge variants.
+     *
+     * @return true if player has a valid teleport item in inventory
+     */
+    private boolean hasTeleportItem() {
+        ZombiePirateLockerConfig.TeleportMethod method = config.teleportMethod();
+        int[] idsToCheck;
+
+        switch (method) {
+            case GLORY_EDGEVILLE:
+                idsToCheck = GLORY_IDS;
+                break;
+            case RING_OF_DUELING_FEROX:
+                idsToCheck = RING_OF_DUELING_IDS;
+                break;
+            default:
+                log.warn("Unknown teleport method: {} - checking for any teleport item", method);
+                // Check for either glory or ring of dueling
+                for (int id : GLORY_IDS) {
+                    if (Rs2Inventory.hasItem(id)) return true;
+                }
+                for (int id : RING_OF_DUELING_IDS) {
+                    if (Rs2Inventory.hasItem(id)) return true;
+                }
+                return false;
+        }
+>>>>>>> Stashed changes
+
+        for (int id : idsToCheck) {
+            if (Rs2Inventory.hasItem(id)) {
+                return true;
+            }
+<<<<<<< Updated upstream
 
             // Create JSON payload for Discord webhook
             String jsonPayload = String.format(
@@ -282,9 +456,13 @@ public class ZombiePirateLockerScript extends Script {
 
         } catch (Exception e) {
             log.error("Error preparing Discord webhook: {}", e.getMessage());
+=======
+>>>>>>> Stashed changes
         }
+        return false;
     }
 
+<<<<<<< Updated upstream
     private void emergencyTeleport() {
         // Check cooldown to prevent spam teleporting
         if (System.currentTimeMillis() - lastEmergencyTeleport < EMERGENCY_TELEPORT_COOLDOWN) {
@@ -314,6 +492,80 @@ public class ZombiePirateLockerScript extends Script {
         log.error("No Amulet of Glory found in inventory! Shutting down script");
         //TODO FIX THIS
         shutdown();
+=======
+    /**
+     * Simple teleport to safety when out of keys (non-emergency).
+     * Does NOT use logout, sleep chains, or recursive calls to avoid client freeze.
+     */
+    private void teleportToSafety() {
+        ZombiePirateLockerConfig.TeleportMethod method = config.teleportMethod();
+        log.info("teleportToSafety() called - TeleportMethod: {}", method);
+
+        String teleportDestination;
+        int[] itemIds;
+        String itemDisplayName;
+
+        // Use switch for proper handling of all teleport methods
+        switch (method) {
+            case GLORY_EDGEVILLE:
+                teleportDestination = "Edgeville";
+                itemIds = GLORY_IDS;
+                itemDisplayName = "Amulet of Glory";
+                break;
+            case RING_OF_DUELING_FEROX:
+                teleportDestination = "Ferox Enclave";
+                itemIds = RING_OF_DUELING_IDS;
+                itemDisplayName = "Ring of Dueling";
+                break;
+            default:
+                log.error("Unknown teleport method: {} - defaulting to Glory", method);
+                teleportDestination = "Edgeville";
+                itemIds = GLORY_IDS;
+                itemDisplayName = "Amulet of Glory";
+        }
+
+        // Find teleport item by ID (handles all charge variants)
+        Rs2ItemModel teleportItem = null;
+        for (int itemId : itemIds) {
+            teleportItem = Rs2Inventory.get(itemId);
+            if (teleportItem != null) {
+                log.info("Found {} (ID: {}) in inventory", itemDisplayName, itemId);
+                break;
+            }
+        }
+
+        if (teleportItem == null) {
+            log.error("NO {} FOUND IN INVENTORY - Cannot escape!", itemDisplayName);
+            log.error("Searched for IDs: {}", java.util.Arrays.toString(itemIds));
+            log.error("Inventory contents:");
+            Rs2Inventory.items().forEach(item -> {
+                if (item != null) {
+                    log.error("  - {} (ID: {})", item.getName(), item.getId());
+                }
+            });
+            Microbot.log("No " + itemDisplayName + " found! Ring of Dueling crumbles when charges run out. Shutting down for safety.");
+            shutdown();
+            return;
+        }
+
+        log.info("Teleporting to {} using {} (ID: {})", teleportDestination, teleportItem.getName(), teleportItem.getId());
+
+        WorldPoint beforeTeleport = Rs2Player.getWorldLocation();
+
+        // Interact with the teleport item
+        Rs2Inventory.interact(teleportItem.getId(), teleportDestination);
+
+        // Wait briefly and check if position changed
+        Global.sleep(600, 1000);
+        WorldPoint afterWait = Rs2Player.getWorldLocation();
+        if (!afterWait.equals(beforeTeleport)) {
+            log.info("Position changed from {} to {} - teleport successful!", beforeTeleport, afterWait);
+        } else {
+            log.warn("Position unchanged after teleport attempt - still at {}", afterWait);
+        }
+
+        // Let the main loop check if we escaped on next tick
+>>>>>>> Stashed changes
     }
 
     private void handleBanking() {
@@ -375,6 +627,238 @@ public class ZombiePirateLockerScript extends Script {
         // If we escaped from a PKer, hop worlds immediately at the bank
         if (escapedFromPker) {
             log.info("PKer escape: Hopping worlds at bank before returning to wilderness");
+<<<<<<< Updated upstream
+=======
+            int maxRetries = 6;
+            boolean hopSuccessful = false;
+            int initialWorld = Microbot.getClient().getWorld();
+
+            for (int attempt = 1; attempt <= maxRetries && !hopSuccessful; attempt++) {
+                int currentWorld = Microbot.getClient().getWorld();
+                if (currentWorld != initialWorld && attempt > 1) {
+                    log.info("Previous hop attempt succeeded - now on world {}", currentWorld);
+                    lastHopTime = System.currentTimeMillis();
+                    hopSuccessful = true;
+                    break;
+                }
+
+                // Open world hopper widget before attempting hop
+                Microbot.getClient().openWorldHopper();
+                Global.sleep(300, 500);
+
+                int newWorld = Login.getRandomWorld(true, null);
+                log.info("PKer escape hop: Hopping from world {} to {} (attempt {}/{})",
+                    currentWorld, newWorld, attempt, maxRetries);
+
+                boolean isHopped = Microbot.hopToWorld(newWorld);
+                Global.sleep(800, 1200);
+
+                if (isHopped) {
+                    log.debug("World hop initiated");
+                } else {
+                    log.debug("Microbot.hopToWorld returned false, waiting for potential async hop");
+                }
+
+                // Wait for hopping state
+                sleepUntil(() ->
+                    Microbot.getClient().getGameState() == GameState.HOPPING, 5000);
+
+                if (Microbot.getClient().getGameState() == GameState.HOPPING) {
+                    // Wait for logged in state
+                    sleepUntil(() ->
+                        Microbot.getClient().getGameState() == GameState.LOGGED_IN, 10000);
+
+                    if (Microbot.getClient().getGameState() == GameState.LOGGED_IN) {
+                        log.info("PKer escape hop successful - now on world {}", Microbot.getClient().getWorld());
+                        lastHopTime = System.currentTimeMillis();
+                        hopSuccessful = true;
+                    } else {
+                        log.warn("World hop timed out waiting for LOGGED_IN state (attempt {}/{})",
+                            attempt, maxRetries);
+                    }
+                } else {
+                    log.warn("World hop timed out waiting for HOPPING state (attempt {}/{})",
+                        attempt, maxRetries);
+                }
+
+                if (!hopSuccessful && attempt < maxRetries) {
+                    log.info("Waiting before retry...");
+                    Global.sleep(2500, 3500);
+                }
+            }
+
+            if (!hopSuccessful) {
+                log.error("Failed to hop worlds after {} attempts, continuing anyway", maxRetries);
+            }
+
+            // Clear the PKer escape flag now that we've handled it
+            escapedFromPker = false;
+            log.info("PKer escape protocol complete, resuming normal operations");
+        }
+
+        // Travel to zombie pirates using configured transport method
+        travelToZombiePirates();
+    }
+
+    /**
+     * Travels to zombie pirates using the configured transport method
+     */
+    private void travelToZombiePirates() {
+        // Close bank if open
+        if (Rs2Bank.isOpen()) {
+            Rs2Bank.closeBank();
+            sleepUntil(() -> !Rs2Bank.isOpen(), Rs2Random.between(1600, 2200));
+        }
+
+        WorldPoint currentLocation = Rs2Player.getWorldLocation();
+        ZombiePirateLockerConfig.TransportMethod transportMethod = config.transportMethod();
+
+        log.info("Using transport method: {}", transportMethod);
+
+        switch (transportMethod) {
+            case LUMBERYARD_TELEPORT:
+                useLumberyardTeleport(currentLocation);
+                break;
+            case BURNING_AMULET:
+                useBurningAmulet(currentLocation);
+                break;
+            case WILDERNESS_OBELISK:
+                useWildernessObelisk(currentLocation);
+                break;
+            case FEROX_ENCLAVE_RUN:
+                runFromFeroxEnclave();
+                break;
+            case RING_OF_ELEMENTS:
+                useRingOfElements(currentLocation);
+                break;
+            case HOT_AIR_BALLOON:
+                useHotAirBalloon(currentLocation);
+                break;
+            default:
+                log.warn("Unknown transport method, defaulting to Lumberyard");
+                useLumberyardTeleport(currentLocation);
+        }
+        // World hopping is only done when escaping from PKer (handled in handleBanking)
+    }
+
+    /**
+     * Uses Lumberyard teleport tab to travel near zombie pirates
+     */
+    private void useLumberyardTeleport(WorldPoint currentLocation) {
+        Rs2ItemModel lumberyardTab = Rs2Inventory.get(LUMBERYARD_TELE);
+        if (lumberyardTab != null) {
+            log.info("Using Lumberyard teleport tab");
+            if (Rs2Inventory.interact(lumberyardTab, "Teleport")) {
+                log.info("Teleporting to Lumberyard");
+                sleepUntil(() -> !Rs2Player.getWorldLocation().equals(currentLocation), Rs2Random.between(5000, 7000));
+
+                if (!Rs2Bank.isNearBank(10)) {
+                    log.info("Successfully teleported to Lumberyard area");
+                } else {
+                    log.warn("Still near bank after teleport attempt");
+                }
+            } else {
+                log.error("Failed to interact with Lumberyard teleport tab");
+            }
+        } else {
+            log.error("Failed to find Lumberyard teleport tab in inventory");
+        }
+    }
+
+    /**
+     * Uses Burning Amulet to teleport to Chaos Temple, then walk east
+     */
+    private void useBurningAmulet(WorldPoint currentLocation) {
+        // Find a charged burning amulet
+        int burningAmuletId = -1;
+        for (int id : BURNING_AMULET_IDS) {
+            if (Rs2Inventory.hasItem(id)) {
+                burningAmuletId = id;
+                break;
+            }
+        }
+
+        if (burningAmuletId == -1) {
+            log.error("No Burning Amulet found in inventory!");
+            return;
+        }
+
+        log.info("Using Burning Amulet to Chaos Temple");
+        if (Rs2Inventory.interact(burningAmuletId, "Chaos Temple")) {
+            sleepUntil(() -> !Rs2Player.getWorldLocation().equals(currentLocation), Rs2Random.between(5000, 7000));
+            log.info("Teleported to Chaos Temple area");
+
+            // Check if we have 72 agility for shortcut (use boosted level in case of stat drain)
+            int agilityLevel = Rs2Player.getBoostedSkillLevel(net.runelite.api.Skill.AGILITY);
+            if (agilityLevel >= 72) {
+                log.info("Using 72 Agility shortcut (current level: {})", agilityLevel);
+                // Walk to shortcut and use it, then continue to chest
+            } else {
+                log.info("Walking through Chaos Temple to zombie pirates (agility: {}, need 72)", agilityLevel);
+                // Walker will handle the route
+            }
+        } else {
+            log.error("Failed to use Burning Amulet");
+        }
+    }
+
+    /**
+     * Uses Wilderness Obelisk to teleport to level 18, then walk to zombie pirates
+     */
+    private void useWildernessObelisk(WorldPoint currentLocation) {
+        log.info("Using Wilderness Obelisk method - walking to obelisk first");
+        // This requires walking to an obelisk and activating it
+        // The obelisk teleports to level 18 wilderness
+        // Then walk south (with optional shortcut) and east to zombie pirates
+
+        // For now, just walk towards the wilderness - Rs2Walker will handle routing
+        log.warn("Wilderness Obelisk method requires walking to obelisk - using walker");
+    }
+
+    /**
+     * Runs east from Ferox Enclave to zombie pirates
+     */
+    private void runFromFeroxEnclave() {
+        log.info("Running east from Ferox Enclave to zombie pirates");
+        // Already at Ferox if using Ring of Dueling, just need to walk east
+        // Rs2Walker will handle the routing to CHEST_AREA
+    }
+
+    /**
+     * Uses Ring of Elements to teleport to Earth Altar, then walk north
+     */
+    private void useRingOfElements(WorldPoint currentLocation) {
+        if (!Rs2Inventory.hasItem(RING_OF_ELEMENTS)) {
+            log.error("No Ring of Elements found in inventory!");
+            return;
+        }
+
+        log.info("Using Ring of Elements to Earth Altar");
+        if (Rs2Inventory.interact(RING_OF_ELEMENTS, "Earth Altar")) {
+            sleepUntil(() -> !Rs2Player.getWorldLocation().equals(currentLocation), Rs2Random.between(5000, 7000));
+            log.info("Teleported to Earth Altar area");
+            // Walker will handle the route north to wilderness and zombie pirates
+        } else {
+            log.error("Failed to use Ring of Elements");
+        }
+    }
+
+    /**
+     * Uses Hot Air Balloon to travel to Varrock, then walk north
+     */
+    private void useHotAirBalloon(WorldPoint currentLocation) {
+        log.info("Hot Air Balloon method - requires manual travel to balloon");
+        // Hot air balloon requires physical interaction at the balloon location
+        // This is less automated but still a valid route
+        log.warn("Hot Air Balloon requires starting near a balloon - using walker to destination");
+    }
+
+    /**
+     * Performs world hop if not on cooldown
+     */
+    private void performWorldHopIfNeeded() {
+        if (System.currentTimeMillis() - lastHopTime >= HOP_COOLDOWN) {
+>>>>>>> Stashed changes
             int maxRetries = 3;
             boolean hopSuccessful = false;
             int initialWorld = Microbot.getClient().getWorld();
@@ -540,14 +1024,27 @@ public class ZombiePirateLockerScript extends Script {
     }
 
     /**
+<<<<<<< Updated upstream
      * Custom inventory check that accepts any charged glory instead of requiring exact ID match
+=======
+     * Custom inventory check that accepts any charged teleport item (Glory or Ring of Dueling)
+     * instead of requiring exact ID match. Aggregates items by ID to handle non-stackable items
+     * like food that appear as multiple entries in the setup.
+>>>>>>> Stashed changes
      */
     private boolean doesInventoryMatchWithGloryException() {
         var setupItems = inventorySetup.getInventoryItems();
 
+        // Aggregate required quantities by item ID
+        // For non-stackable items (quantity=1), this counts how many slots have that item
+        // For stackable items, this sums the quantities
+        Map<Integer, Integer> requiredByItemId = new HashMap<>();
+        boolean hasTeleportInSetup = false;
+
         for (var setupItem : setupItems) {
             if (setupItem == null || setupItem.getId() == -1) continue;
 
+<<<<<<< Updated upstream
             // Check if this setup item is a glory
             boolean isGloryInSetup = false;
             for (int gloryId : GLORY_IDS) {
@@ -574,12 +1071,42 @@ public class ZombiePirateLockerScript extends Script {
 
             // For non-glory items, check exact quantity
             int required = setupItem.getQuantity();
+=======
+            String itemName = setupItem.getName() != null ? setupItem.getName().toLowerCase() : "";
+
+            // Check if this setup item is a teleport item (Glory or Ring of Dueling) by name
+            boolean isTeleportItem = itemName.contains("amulet of glory") ||
+                                     itemName.contains("ring of dueling");
+
+            if (isTeleportItem) {
+                hasTeleportInSetup = true;
+                continue; // Don't add to map, handled separately
+            }
+
+            // Aggregate by item ID - add quantity (1 for non-stackables, actual qty for stackables)
+            int itemId = setupItem.getId();
+            int qty = setupItem.getQuantity();
+            requiredByItemId.merge(itemId, qty, Integer::sum);
+        }
+
+        // Check teleport item if setup has one
+        if (hasTeleportInSetup && !hasTeleportItem()) {
+            return false;
+        }
+
+        // Check each required item
+        for (Map.Entry<Integer, Integer> entry : requiredByItemId.entrySet()) {
+            int itemId = entry.getKey();
+            int required = entry.getValue();
+
+>>>>>>> Stashed changes
             int current = Rs2Inventory.items()
-                .filter(i -> i != null && i.getId() == setupItem.getId())
+                .filter(i -> i != null && i.getId() == itemId)
                 .mapToInt(Rs2ItemModel::getQuantity)
                 .sum();
 
-            if (current < required) {
+            if (current != required) {
+                log.debug("Item ID {} mismatch: required={}, current={}", itemId, required, current);
                 return false;
             }
         }
@@ -588,12 +1115,22 @@ public class ZombiePirateLockerScript extends Script {
     }
 
     /**
+<<<<<<< Updated upstream
      * Custom inventory loading that handles glory flexibility and withdraws only missing items
+=======
+     * Custom inventory loading that handles teleport item flexibility and withdraws only missing items.
+     * Aggregates items by ID to handle non-stackable items like food that appear as multiple entries.
+>>>>>>> Stashed changes
      */
     private void loadInventoryWithGlorySupport() {
         var setupItems = inventorySetup.getInventoryItems();
 
         log.debug("Starting custom inventory load with glory support");
+
+        // Aggregate required quantities by item ID (and track item names for logging)
+        Map<Integer, Integer> requiredByItemId = new HashMap<>();
+        Map<Integer, String> itemNames = new HashMap<>();
+        boolean hasTeleportInSetup = false;
 
         for (var setupItem : setupItems) {
             if (setupItem == null || setupItem.getId() == -1) continue;
@@ -607,6 +1144,7 @@ public class ZombiePirateLockerScript extends Script {
                 }
             }
 
+<<<<<<< Updated upstream
             if (isGloryInSetup) {
                 // Handle glory with flexibility
                 handleGloryInInventory();
@@ -615,41 +1153,124 @@ public class ZombiePirateLockerScript extends Script {
 
             // For non-glory items, check if we need more
             int required = setupItem.getQuantity();
+=======
+            // Check if this setup item is a teleport item (Glory or Ring of Dueling) by name
+            boolean isTeleportItem = itemName.contains("amulet of glory") ||
+                                     itemName.contains("ring of dueling");
+
+            if (isTeleportItem) {
+                hasTeleportInSetup = true;
+                continue;
+            }
+
+            // Aggregate by item ID
+            int itemId = setupItem.getId();
+            int qty = setupItem.getQuantity();
+            requiredByItemId.merge(itemId, qty, Integer::sum);
+            itemNames.putIfAbsent(itemId, setupItem.getName());
+        }
+
+        // Handle teleport item first if setup has one
+        if (hasTeleportInSetup) {
+            handleTeleportItemInInventory();
+        }
+
+        // Process each unique item ID
+        for (Map.Entry<Integer, Integer> entry : requiredByItemId.entrySet()) {
+            int itemId = entry.getKey();
+            int required = entry.getValue();
+            String name = itemNames.getOrDefault(itemId, "Unknown");
+
+>>>>>>> Stashed changes
             int current = Rs2Inventory.items()
-                .filter(i -> i != null && i.getId() == setupItem.getId())
+                .filter(i -> i != null && i.getId() == itemId)
                 .mapToInt(Rs2ItemModel::getQuantity)
                 .sum();
 
             int needed = required - current;
 
             if (needed > 0) {
-                log.info("Need {} more of {} (ID: {})", needed, setupItem.getName(), setupItem.getId());
-                Rs2Bank.withdrawX(setupItem.getId(), needed);
+                log.info("Need {} more of {} (ID: {})", needed, name, itemId);
+                Rs2Bank.withdrawX(itemId, needed);
+                final int targetAmount = required;
                 sleepUntil(() -> {
                     int newCurrent = Rs2Inventory.items()
-                        .filter(i -> i != null && i.getId() == setupItem.getId())
+                        .filter(i -> i != null && i.getId() == itemId)
                         .mapToInt(Rs2ItemModel::getQuantity)
                         .sum();
-                    return newCurrent >= required;
+                    return newCurrent >= targetAmount;
                 }, Rs2Random.between(800, 1600));
             } else if (needed < 0) {
+<<<<<<< Updated upstream
                 log.info("Have {} excess of {} (ID: {}), depositing", -needed, setupItem.getName(), setupItem.getId());
                 Rs2Bank.depositX(setupItem.getId(), -needed);
                 sleep(Rs2Random.between(300, 600));
+=======
+                log.info("Have {} excess of {} (ID: {}), depositing", -needed, name, itemId);
+                Rs2Bank.depositX(itemId, -needed);
+                Global.sleep(300, 600);
+>>>>>>> Stashed changes
             }
         }
     }
 
     /**
+<<<<<<< Updated upstream
      * Handles glory in inventory - accepts any charged glory, swaps uncharged for charged
      */
     private void handleGloryInInventory() {
         // First, check if we have an uncharged glory and swap it
         if (Rs2Inventory.hasItem(UNCHARGED_GLORY)) {
             log.info("Found uncharged glory, depositing and withdrawing charged glory");
+=======
+     * Handles teleport item in inventory - withdraws correct type based on config.
+     * Uses item IDs for reliable detection across all charge variants.
+     */
+    private void handleTeleportItemInInventory() {
+        ZombiePirateLockerConfig.TeleportMethod method = config.teleportMethod();
+        int[] correctIds;
+        int[] wrongIds;
+        String correctItemName;
+        String wrongItemName;
+
+        switch (method) {
+            case GLORY_EDGEVILLE:
+                correctIds = GLORY_IDS;
+                wrongIds = RING_OF_DUELING_IDS;
+                correctItemName = "Amulet of Glory";
+                wrongItemName = "Ring of Dueling";
+                break;
+            case RING_OF_DUELING_FEROX:
+                correctIds = RING_OF_DUELING_IDS;
+                wrongIds = GLORY_IDS;
+                correctItemName = "Ring of Dueling";
+                wrongItemName = "Amulet of Glory";
+                break;
+            default:
+                log.warn("Unknown teleport method: {} - defaulting to Glory", method);
+                correctIds = GLORY_IDS;
+                wrongIds = RING_OF_DUELING_IDS;
+                correctItemName = "Amulet of Glory";
+                wrongItemName = "Ring of Dueling";
+        }
+
+        // Deposit any wrong teleport items
+        for (int wrongId : wrongIds) {
+            if (Rs2Inventory.hasItem(wrongId)) {
+                log.info("Found {} (ID: {}) in inventory but using {}, depositing", wrongItemName, wrongId, correctItemName);
+                Rs2Bank.depositOne(wrongId);
+                Global.sleep(300, 500);
+            }
+        }
+
+        // For glory, also check for uncharged version
+        if (method == ZombiePirateLockerConfig.TeleportMethod.GLORY_EDGEVILLE && Rs2Inventory.hasItem(UNCHARGED_GLORY)) {
+            log.info("Found uncharged glory, depositing");
+>>>>>>> Stashed changes
             Rs2Bank.depositOne(UNCHARGED_GLORY);
             sleep(Rs2Random.between(300, 500));
 
+<<<<<<< Updated upstream
             // Withdraw a charged glory
             for (int gloryId : GLORY_IDS) {
                 if (Rs2Bank.hasItem(gloryId)) {
@@ -685,10 +1306,64 @@ public class ZombiePirateLockerScript extends Script {
                 }
             }
             log.warn("No charged glories found in bank!");
+=======
+        // Check if we already have the correct charged teleport item
+        for (int correctId : correctIds) {
+            if (Rs2Inventory.hasItem(correctId)) {
+                log.debug("Already have charged {} (ID: {})", correctItemName, correctId);
+                return;
+            }
         }
+
+        // Need to withdraw a charged teleport item
+        log.info("No {} in inventory, withdrawing one", correctItemName);
+
+        for (int teleportId : correctIds) {
+            if (Rs2Bank.hasItem(teleportId)) {
+                log.info("Withdrawing {} (ID: {})", correctItemName, teleportId);
+                Rs2Bank.withdrawOne(teleportId);
+                final int idToCheck = teleportId;
+                sleepUntil(() -> Rs2Inventory.hasItem(idToCheck), Rs2Random.between(800, 1600));
+                log.info("Successfully withdrew {}", correctItemName);
+                return;
+            }
+>>>>>>> Stashed changes
+        }
+
+        log.warn("No charged {} found in bank!", correctItemName);
     }
 
     private void openChest() {
+<<<<<<< Updated upstream
+=======
+        // Verify we have keys before attempting to open
+        // Use count() instead of hasItem() for reliability
+        if (Rs2Inventory.count(ZOMBIE_KEY) == 0) {
+            log.debug("No zombie keys in inventory, cannot open chest");
+            return;
+        }
+
+        // Verify we have a teleport item for safety
+        if (!hasTeleportItem()) {
+            log.warn("No teleport item available! Returning to bank for safety.");
+            return; // Main loop will handle teleporting/banking
+        }
+
+        // Check if player is currently animating (already interacting with chest)
+        if (Rs2Player.isAnimating()) {
+            log.debug("Player is animating, waiting for current action to complete");
+            return;
+        }
+
+        // Check cooldown to prevent rapid re-clicking the chest
+        long timeSinceLastInteraction = System.currentTimeMillis() - lastChestInteraction;
+        if (timeSinceLastInteraction < CHEST_INTERACTION_COOLDOWN) {
+            log.debug("Chest interaction on cooldown ({} ms remaining)",
+                CHEST_INTERACTION_COOLDOWN - timeSinceLastInteraction);
+            return;
+        }
+
+>>>>>>> Stashed changes
         var chest = Rs2GameObject.findObjectById(CHEST_CLOSED);
         if (chest == null) {
             log.debug("No closed chest found nearby");
