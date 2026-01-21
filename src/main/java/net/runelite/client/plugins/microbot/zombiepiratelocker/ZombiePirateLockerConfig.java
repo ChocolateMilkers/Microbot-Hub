@@ -1,34 +1,52 @@
 package net.runelite.client.plugins.microbot.zombiepiratelocker;
 
-import net.runelite.client.config.Config;
-import net.runelite.client.config.ConfigGroup;
-import net.runelite.client.config.ConfigItem;
-import net.runelite.client.config.ConfigSection;
+import net.runelite.client.config.*;
 
+@ConfigInformation(
+    "<html>" +
+    "<h2>Zombie Pirate Locker Setup</h2>" +
+    "<p><b>Inventory Setups:</b></p>" +
+    "<ol>" +
+    "<li>Install 'Inventory Setups' from RuneLite Plugin Hub</li>" +
+    "<li>Click the armor icon in sidebar</li>" +
+    "<li>Use the 'default' profile name</li>" +
+    "<li>Load your gear and inventory</li>" +
+    "<li>Click the refresh icon to save setup</li>" +
+    "</ol>" +
+    "<p><b>Required Items:</b></p>" +
+    "<ul>" +
+    "<li>Zombie pirate keys (main inventory)</li>" +
+    "<li>Escape teleport: Glory or Ring of Dueling</li>" +
+    "<li>Transport item based on config selection</li>" +
+    "<li>Food (for HP below 80%)</li>" +
+    "<li>Blighted Anglerfish (optional overheal)</li>" +
+    "</ul>" +
+    "<p><b>Recommended:</b> Combat level 6 with 24 HP, or lower, minimal risk gear, looting bag</p>" +
+    "</html>"
+)
 @ConfigGroup("ZombiePirateLocker")
 public interface ZombiePirateLockerConfig extends Config {
 
-    @ConfigSection(
-            name = "Instructions",
-            description = "How to set up this script",
-            position = 0
-    )
-    String instructionsSection = "instructions";
+    enum TeleportMethod {
+        GLORY_EDGEVILLE,
+        RING_OF_DUELING_FEROX
+    }
 
-    @ConfigItem(
-            keyName = "setupInstructions",
-            name = "Setup Instructions",
-            description = "",
+    enum TransportMethod {
+        LUMBERYARD_TELEPORT,
+        BURNING_AMULET,
+        WILDERNESS_OBELISK,
+        FEROX_ENCLAVE_RUN,
+        RING_OF_ELEMENTS,
+        HOT_AIR_BALLOON
+    }
+
+    @ConfigSection(
+            name = "PKer Detection",
+            description = "Configure how the script detects threatening players",
             position = 0,
-            section = instructionsSection
+            closedByDefault = false
     )
-<<<<<<< Updated upstream
-    default String setupInstructions() {
-        return "This script uses Inventory Setups for tracking the inventory and gear to bring each trip. " +
-                "Please download that plugin from RuneLite's plugin hub (not Microbot), and use the \"default\" profile. " +
-                "To use that plugin, click the armor guy on the side-bar, click the eye under the default box, " +
-                "and click the refresh icon to set your current inventory as the default inventory.";
-=======
     String pkerSection = "pker";
 
     @ConfigItem(
@@ -40,28 +58,6 @@ public interface ZombiePirateLockerConfig extends Config {
     )
     default boolean enablePlayerMonitor() { return true; }
 
-//    @ConfigItem(
-//            keyName = "pkerDetectionFilter",
-//            name = "Detection Filter",
-//            description = "Choose who to detect as threats. Excluding friends/FC/CC is recommended for team activities.",
-//            position = 0,
-//            section = pkerSection
-//    )
-//    default PKerDetectionFilter pkerDetectionFilter() {
-//        return PKerDetectionFilter.EXCLUDE_FRIENDS_FC_CC;
-//    }
-//
-//    @ConfigItem(
-//            keyName = "emergencyEscapeMethod",
-//            name = "Emergency Escape Method",
-//            description = "Logout + Hop: Safest, saves teleport charges (only works if not in combat)\nTeleport Only: Works in combat, uses teleport charge",
-//            position = 1,
-//            section = pkerSection
-//    )
-//    default EmergencyEscapeMethod emergencyEscapeMethod() {
-//        return EmergencyEscapeMethod.LOGOUT_AND_HOP;
-//    }
-//
     @ConfigItem(
             keyName = "teleportMethod",
             name = "Teleport Method",
@@ -143,13 +139,13 @@ public interface ZombiePirateLockerConfig extends Config {
     @Range(min = 2000, max = 20000)
     default int chestOpenDelayMax() {
         return 13000;
->>>>>>> Stashed changes
     }
 
     @ConfigSection(
             name = "Discord Notifications",
             description = "Discord webhook settings for PKer alerts",
-            position = 1
+            position = 4,
+            closedByDefault = true
     )
     String discordSection = "discord";
 
