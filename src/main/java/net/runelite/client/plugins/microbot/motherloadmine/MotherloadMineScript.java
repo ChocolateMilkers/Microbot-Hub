@@ -286,7 +286,7 @@ public class MotherloadMineScript extends Script
 		{
 			// We use a modified version of waitForXpDrop to ensure we break out of the sleep if the strut is repaired
 			final int skillExp = Microbot.getClient().getSkillExperience(Skill.SMITHING);
-			sleepUntilTrue(() -> skillExp != Microbot.getClient().getSkillExperience(Skill.SMITHING) || getBrokenStrutCount() <= 1, 100, 10_000);
+			sleepUntilTrue(() -> skillExp != Microbot.getClient().getSkillExperience(Skill.SMITHING) || getBrokenStrutCount() <= 1, 250, 20_000);
 
 			dropHammerIfNeeded();
 			shouldRepairWaterwheel = false;
@@ -513,7 +513,7 @@ public class MotherloadMineScript extends Script
 
 		handlePickaxeSpec();
 
-		if (!rs2TileObjectCache.query().interact(vein.getId())) return false;
+		if (!vein.click()) return false;
 		oreVein = vein;
 
 		return sleepUntil(() -> {
